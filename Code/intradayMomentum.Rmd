@@ -25,7 +25,7 @@ source('./functions.R')
 
 ```{r echo = FALSE}
 #Load Data
-load('../FinalData/master.Rda')
+load('../Data/master.Rda')
 data <- master[Ticker == ticker]
 rm(master)
 data[, Ticker := NULL]
