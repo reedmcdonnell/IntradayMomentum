@@ -1,0 +1,177 @@
+---
+title: "Intraday Momentum - Aggregated Analysis"
+output:
+  html_document: default
+---
+  
+```{r setup, include=TRUE, eval=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE}
+#Clear Workspace
+rm(list = ls())
+```
+
+```{r echo=FALSE, warning=FALSE, message = FALSE}
+#Source files
+source('./libraries.R')
+source('./functions.R')
+```
+
+```{r echo=FALSE}
+#Load regression time series
+load('../FinalData/master.Rda')
+load('../FinalData/timeSeriesRegressVar.Rda')
+load('../FinalData/timeSeriesRegressModel.Rda')
+
+alphaToEnter <- .08
+
+#############################################
+
+#Remove variables below alpha-to-enter
+bestVarsMap = hash()
+
+tickers <- unique(master$Ticker)
+for(ticker in tickers) {
+  bestVars <- getBestVars(master[Ticker == ticker], alphaToEnter)
+  bestVarsMap[[ticker]] <- bestVars
+}
+
+bestVars <- unique(Reduce(function(x, y) c(x, y), values(bestVarsMap)))
+
+#Only keep best Coefficients
+cols <- c(setdiff(names(timeSeriesRegressVar), setdiff(retCols, 'R13')), bestVars)
+timeSeriesRegressVar <- timeSeriesRegressVar[, cols, with = FALSE]
+
+#Take mean by ticker
+timeSeriesRegressVar <- timeSeriesRegressVar[, lapply(.SD, mean, na.rm=TRUE), 
+                                             by=c('Date', 'Type', 'Lookback'), 
+                                             .SDcols = bestVars]
+#Aggregate data by ticker
+tsRegVar <- melt(timeSeriesRegressVar, id.vars = c('Date', 'Lookback', 'Type'), 
+                 measure.vars = bestVars) %>% data.table()
+
+
+#Model stats
+timeSeriesRegressModel <- timeSeriesRegressModel[, lapply(.SD, mean, na.rm=TRUE), 
+                                             by=c('Date', 'Lookback'), 
+                                             .SDcols = c('AdjRSquared', 'ResidualStdErr', 'FStatPVal')]
+
+```
+
+
+####ROLLLLINGGGG
+```{r}
+load('../FinalData/master.Rda')
+ticker <- 'SPY'
+temp <- getRollingRegressionData(data = master, setdiff(retCols, 'R13'), 'ALL')
+
+
+
+#R13 = B0 + B1*R1 + B2*R2 + ... + B12*R12
+formula <- paste("R13 ~", paste(setdiff(retCols, 'R13'), collapse = " + "))
+model <- lm(formula, data = master)
+summary(model)
+#[Date <= '2014-01-01']
+
+## Newey West Robust T-statistic
+#Note: This will not effect R^2 or coefficients - provides adjusted t-statistic
+print('Newey West Robust T-statistic')
+neweyWest <- coeftest(model, vcov = vcovHC(model))
+print(neweyWest)
+
+
+
+```
+
+
+## Time-Series Regression Values Aggregated By Ticker
+
+### Regression Table
+```{r echo=FALSE}
+#Coefficients
+plot <- ggplot(data = tsRegVar[Type == 'Coeff' & Lookback == TRUE], 
+               aes(x = Date, y = value, group = variable, color = variable)) + geom_line() + 
+  xlab('Dates') + ylab('Coefficient') + ggtitle('Regression Coefficients - Rolling 3 Years')
+plot(plot)
+
+plot <- ggplot(data = tsRegVar[Type == 'Coeff' & Lookback == FALSE], 
+               aes(x = Date, y = value, group = variable, color = variable)) + geom_line() + 
+  xlab('Dates') + ylab('Coefficient') + ggtitle('Regression Coefficients - Complete')
+plot(plot)
+
+#P-Vals
+plot <- ggplot(data = tsRegVar[Type == 'PVal' & Lookback == TRUE], 
+               aes(x = Date, y = value, group = variable, color = variable)) + geom_line() + 
+  xlab('Dates') + ylab('P-Value') + ggtitle('P-Value - Rolling 3 Years')
+plot(plot)
+
+plot <- ggplot(data = tsRegVar[Type == 'PVal' & Lookback == FALSE], 
+               aes(x = Date, y = value, group = variable, color = variable)) + geom_line() + 
+  xlab('Dates') + ylab('P-Value') + ggtitle('P-Value - Complete')
+plot(plot)
+
+#Aggregated again
+tsRegVarAgg <- tsRegVar[, .(Value = mean(value)), by = c('Date', 'Type', 'Lookback')]
+
+#Coefficients
+plot <- ggplot(data = tsRegVarAgg[Type == 'Coeff' & Lookback == TRUE], 
+               aes(x = Date, y = Value, color = Value)) + geom_line() + 
+  xlab('Dates') + ylab('Coefficient') + ggtitle('Average Regression Coefficient - Rolling 3 Years')
+plot(plot)
+
+plot <- ggplot(data = tsRegVarAgg[Type == 'Coeff' & Lookback == FALSE], 
+               aes(x = Date, y = Value, color = Value)) + geom_line() + 
+  xlab('Dates') + ylab('Coefficient') + ggtitle('Average Regression Coefficient - Complete')
+plot(plot)
+
+#PVals
+plot <- ggplot(data = tsRegVarAgg[Type == 'PVal' & Lookback == TRUE], 
+               aes(x = Date, y = Value, color = Value)) + geom_line() + 
+  xlab('Dates') + ylab('P-Value') + ggtitle('Average P-Value - Rolling 3 Years')
+plot(plot)
+
+plot <- ggplot(data = tsRegVarAgg[Type == 'PVal' & Lookback == FALSE], 
+               aes(x = Date, y = Value, color = Value)) + geom_line() + 
+  xlab('Dates') + ylab('P-Value') + ggtitle('Average P-Value - Complete')
+plot(plot)
+```
+
+### Model diagnostics
+```{r echo=FALSE}
+#Adjusted R^2
+plot <- ggplot(data = timeSeriesRegressModel[Lookback == TRUE], 
+               aes(x = Date, y = AdjRSquared, color = AdjRSquared)) + geom_line() + 
+  xlab('Dates') + ylab('R^2') + ggtitle('Adjusted R^2 - Rolling 3 Years')
+plot(plot)
+
+plot <- ggplot(data = timeSeriesRegressModel[Lookback == FALSE], 
+               aes(x = Date, y = AdjRSquared, color = AdjRSquared)) + geom_line() + 
+  xlab('Dates') + ylab('R^2') + ggtitle('Adjusted R^2 - Complete')
+plot(plot)
+
+#ResidualStdErr
+plot <- ggplot(data = timeSeriesRegressModel[Lookback == TRUE], 
+               aes(x = Date, y = ResidualStdErr, color = AdjRSquared)) + geom_line() + 
+  xlab('Dates') + ylab('Error') + ggtitle('Residual Standard Error - Rolling 3 Years')
+plot(plot)
+
+plot <- ggplot(data = timeSeriesRegressModel[Lookback == FALSE], 
+               aes(x = Date, y = ResidualStdErr, color = AdjRSquared)) + geom_line() + 
+  xlab('Dates') + ylab('Error') + ggtitle('Residual Standard Error - Complete')
+plot(plot)
+
+#FStatPVal
+plot <- ggplot(data = timeSeriesRegressModel[Lookback == TRUE], 
+               aes(x = Date, y = FStatPVal, color = AdjRSquared)) + geom_line() + 
+  xlab('Dates') + ylab('P-Value') + ggtitle('F-Statistic P-Value - Rolling 3 Years')
+plot(plot)
+
+plot <- ggplot(data = timeSeriesRegressModel[Lookback == FALSE], 
+               aes(x = Date, y = FStatPVal, color = AdjRSquared)) + geom_line() + 
+  xlab('Dates') + ylab('P-Value') + ggtitle('F-Statistic P-Value - Complete')
+plot(plot)
+```
+
+
