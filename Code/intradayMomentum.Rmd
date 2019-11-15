@@ -7,20 +7,17 @@ output:
 ```{r setup, include=TRUE, eval=TRUE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
-
-```{r echo=FALSE}
-#Clear Workspace
-rm(list = ls())
-
-ticker <- 'SPY'
-```
-
 # Intraday Momentum - `r ticker`
 
 ```{r echo=FALSE, warning=FALSE, message = FALSE}
+#Clear Workspace
+rm(list = ls())
+
 #Source files
 source('./libraries.R')
 source('./functions.R')
+
+ticker <- 'MSFT'
 ```
 
 ```{r echo = FALSE}
@@ -29,6 +26,24 @@ load('../Data/master.Rda')
 data <- master[Ticker == ticker]
 rm(master)
 data[, Ticker := NULL]
+
+#Master data file
+data <- na.omit(data)
+data <- data[order(Date)]
+
+#Remove outliers abd clean
+#Remove outliers for R13
+#data <- data[Vol > mean(Vol) - 2*sd(Vol) & Vol < mean(Vol) + 2*sd(Vol)]
+```
+
+```{r echo = FALSE}
+#Check Date Difference
+data[, DayDiff := Date - shift(Date)]
+#Check for monday -> 3 difference
+data[, Weekday := wday(Date)]
+
+#Remove gaps
+data <- data[DayDiff == 1 | (Weekday == 2 & DayDiff == 3)]
 ```
 
 ## Preliminary data analysis
@@ -80,6 +95,8 @@ bestVars <- bestVars[bestVars != "(Intercept)"]
 #Predict value
 data[, Strat1Signal := predict(model)]
 data[, Strat1Ret := ifelse(Strat1Signal > 0, R13, -R13)]
+#Note
+data <- data[Strat1Ret > mean(Strat1Ret) - 2*sd(Strat1Ret) & Strat1Ret < mean(Strat1Ret) + 2*sd(Strat1Ret)]
 data[, Strat1CumRet := cumprod(1 + Strat1Ret)]
 
 #Random Strategy
@@ -96,6 +113,7 @@ data[, BenchmarkCumRet := cumprod(1 + BenchmarkRet)]
 ## Plot Strategies
 ```{r echo = FALSE}
 #Plot strategies
+data <- data[order(Date)]
 plot <- ggplot() +
   geom_line(data = data, aes(x = Date, y = BenchmarkCumRet, colour = 'Benchmark Long Strategy')) + 
   geom_line(data = data, aes(x = Date, y = Strat1CumRet, colour = 'Long/Short Strategy')) + 
@@ -106,6 +124,7 @@ plot(plot)
 
 ## Histogram of Strategy returns
 ```{r echo = FALSE, warning=FALSE}
+histogram(data$BenchmarkRet, 'Benchmark Return', 'BenchmarkRet')
 histogram(data$Strat1Ret, 'Long/Short Strategy Daily Returns', 'Strat1Ret')
 histogram(data$Strat1Ret - data$BenchmarkRet, 'Excess Daily Returns', 'Excess Returns')
 ```

@@ -2,6 +2,9 @@
 retCols <- unlist(lapply(seq(13), function(x) paste0('R', x)))
 volCols <- unlist(lapply(seq(13), function(x) paste0('V', x)))
 
+#Source libraries
+source('./libraries.R')
+
 #Plots histogram for x vector with title and variable title
 #TODO: Set y dimensions?
 histogram <- function(x, title, varTitle) {
@@ -45,7 +48,8 @@ loadData <- function(minuteData) {
   
   #Calculate minute returns by day
   minuteData[, Ret := Price / shift(Price) - 1, by = DATE]
-  minuteData[, Ret := shift(Ret, -1)]
+  minuteData <- na.omit(minuteData)
+  minuteData[, Ret := shift(Ret, n =-1)]
   
   #Group by 30 minute buckets and calculate return and volatility
   bucketData <- minuteData[, .(DATE = first(DATE), TIME = first(TIME), Open = first(Open), Close = first(Close),
@@ -58,11 +62,11 @@ loadData <- function(minuteData) {
   bucketData[, Bucket := .GRP, by = TIME]
   
   retData <- dcast(bucketData, DATE ~ Bucket, value.var = 'Ret')
-  retData[, `14` := NULL]
+  #retData[, `14` := NULL]
   names(retData) <- c('DATE', retCols)
   
   volData <- dcast(bucketData, DATE ~ Bucket, value.var = 'Vol')
-  volData[, ncol(volData) := NULL]
+  #volData[, ncol(volData) := NULL]
   names(volData) <- c('DATE', volCols)
   dates <- volData$DATE
   #Log transformation for volatility: REMOVED BECAUSE NO IMPROVMENT IN REGRESSION FIRST ORDER VOL TERMS
@@ -86,17 +90,58 @@ loadData <- function(minuteData) {
 }
 
 #Save master.Rda
+buildRdas <- function() {
+  print('Building Rda files from source csvs...')
+  #master <- data.frame() %>% data.table()
+  
+  #List files
+  files = list.files(path = '../../SourceData/', pattern = '*.csv')
+  for(i in 424:length(files)) {
+    file <- files[i]
+    out <- tryCatch({
+      ticker <- strsplit(file, '\\.csv')[[1]]
+      print(ticker)
+      data <- read.csv(paste0('../../SourceData/', file), stringsAsFactors = FALSE) %>% data.table()
+      data[, X0 := NULL]
+      names(data) <- c('Ticker', 'Date', 'TIME', 'Size', 'Price')
+      data[, DATE := as.Date(as.character(Date), format = '%Y%m%d')]
+      
+      #Create date column
+      data[, Date := as.POSIXct(paste0(DATE, ' ', TIME))]
+      
+      result <- loadData(data)
+      
+      #filePath <- paste0('../../SourceData/', ticker, '.Rda' )
+      
+      save(result, file = paste0('../../SourceData/', ticker, '.Rda' ))
+      rm(result)
+      
+    },
+    error = function(cond) {
+      print(paste0('ERROR: ', file))
+    })
+    # if(nrow(master) < 1) {
+    #   master <- result
+    # } else {
+    #   master <- rbind(master, result)
+    # }
+    rm(out)
+  }
+  print('Done!')
+  #save(master, file = '../Data/master.Rda')
+}
+
 buildMasterFile <- function() {
-  print('Building master data file with all tickers using loadData()...')
+  print('Building Rda master file...')
   master <- data.frame() %>% data.table()
   
-  load('../FinalData/prices.Rda')
-  tickers <- unique(data$Ticker)
-  for(ticker in tickers) {
+  #List files
+  files = list.files(path = '../../SourceData/', pattern = '*.Rda')
+  for(file in files) {
+    ticker <- strsplit(file, '\\.Rda')[[1]]
     print(ticker)
-    temp <- data[Ticker == ticker]
-    result <- loadData(temp)
-    result$Ticker <- ticker
+    load(paste0('../../SourceData/', file))
+    result[, Ticker := ticker]
     if(nrow(master) < 1) {
       master <- result
     } else {
@@ -104,7 +149,9 @@ buildMasterFile <- function() {
     }
   }
   
-  save(master, file = '../FinalData/master.Rda')
+  save(master, file = '../Data/master.Rda' ) 
+  
+  print('Done!')
 }
 
 #Loop through all source data - NOTE: Session -> Set Working Directory './'

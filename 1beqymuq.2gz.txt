@@ -1,0 +1,19 @@
+﻿
+# Please enter the commit message for your changes. Lines starting
+# with '#' will be ignored, and an empty message aborts the commit.
+#
+# Committer: Reed McDonnell <Reed McDonnell>
+#
+# On branch reed
+# Changes to be committed:
+#	new file:   Code/.Rhistory
+#	modified:   Code/RollingStrategy.R
+#	new file:   Code/dataMalik.R
+#	modified:   Code/functions.R
+#	modified:   Code/intradayMomentum.Rmd
+#	modified:   Code/libraries.R
+#	new file:   Code/optimize.R
+#	new file:   Data/BUmaster.Rda
+#	modified:   Data/master.Rda
+#
+
